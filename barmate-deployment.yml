@@ -1,0 +1,313 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo
+  namespace: barmate
+spec:
+  ports:
+    - port: 27017
+      targetPort: 27017
+  selector:
+    app: mongo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongo
+  namespace: barmate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongo
+  template:
+    metadata:
+      labels:
+        app: mongo
+    spec:
+      containers:
+        - name: mongo
+          image: mongo:6
+          ports:
+            - containerPort: 27017
+          volumeMounts:
+            - name: mongo-persistent-storage
+              mountPath: /data/db
+      volumes:
+        - name: mongo-persistent-storage
+          emptyDir: {}  # Use a PVC for production
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: barmate-seat
+  namespace: barmate
+spec:
+  serviceName: "seat"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seat
+  template:
+    metadata:
+      labels:
+        app: seat
+    spec:
+      containers:
+        - name: seat
+          # master image - HTTP Tips
+          #image: fwawrzyniak/barmate-seat:0.0.2-SNAPSHOT
+          # stream image - Kafka streams
+          image: fwawrzyniak/barmate-seat:0.1.0-SNAPSHOT
+          imagePullPolicy: IfNotPresent  # Important for local images
+          ports:
+            - containerPort: 8090
+            - containerPort: 5005
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: prod
+            - name: JAVA_TOOL_OPTIONS
+              value: >-
+                -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: barmate-bar
+  namespace: barmate
+spec:
+  serviceName: "bar"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bar
+  template:
+    metadata:
+      labels:
+        app: bar
+    spec:
+      containers:
+        - name: bar
+          image: fwawrzyniak/barmate-bar:0.0.2-SNAPSHOT
+          imagePullPolicy: IfNotPresent  # Important for local images
+          ports:
+            - containerPort: 8091
+            - containerPort: 5005
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: prod
+            - name: JAVA_TOOL_OPTIONS
+              value: >-
+                -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: barmate-waiter
+  namespace: barmate
+spec:
+  serviceName: "waiter"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: waiter
+  template:
+    metadata:
+      labels:
+        app: waiter
+    spec:
+      containers:
+        - name: waiter
+          image: fwawrzyniak/barmate-waiter:0.0.1-SNAPSHOT
+          imagePullPolicy: IfNotPresent  # Important for local images
+          ports:
+            - containerPort: 8092
+            - containerPort: 5005
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: prod
+            - name: JAVA_TOOL_OPTIONS
+              value: >-
+                -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+      restartPolicy: Always    
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: barmate-orders-service
+  namespace: barmate
+spec:
+  serviceName: "orders-service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orders-service
+  template:
+    metadata:
+      labels:
+        app: orders-service
+    spec:
+      containers:
+        - name: orders-service
+          # master image - HTTP + Consumers
+          #image: fwawrzyniak/barmate-orders-service:0.0.2-SNAPSHOT
+          # stream image - Kafka streams
+          image: fwawrzyniak/barmate-orders-service:0.1.0-SNAPSHOT
+          imagePullPolicy: IfNotPresent  # Important for local images
+          ports:
+            - containerPort: 8092
+            - containerPort: 5005
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: prod
+            - name: JAVA_TOOL_OPTIONS
+              value: >-
+                -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+      restartPolicy: Always
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: barmate-gateway
+  namespace: barmate
+spec:
+  serviceName: "gateway"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      containers:
+        - name: gateway
+          image: fwawrzyniak/barmate-gateway:0.0.2-SNAPSHOT
+          imagePullPolicy: IfNotPresent  # Important for local images
+          ports:
+            - containerPort: 8080
+            - containerPort: 5005
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: prod
+            - name: JAVA_TOOL_OPTIONS
+              value: >-
+                -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+      restartPolicy: Always  
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: barmate-frontend
+  namespace: barmate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: fwawrzyniak/barmate-frontend:0.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seat
+  namespace: barmate
+spec:
+  type: NodePort
+  selector:
+    app: seat
+  ports:
+    - name: seat
+      protocol: TCP
+      port: 8090
+      targetPort: 8090
+      nodePort: 30090
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bar
+  namespace: barmate
+spec:
+  type: NodePort
+  selector:
+    app: bar
+  ports:
+    - name: bar
+      protocol: TCP
+      port: 8091
+      targetPort: 8091
+      nodePort: 30091
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: waiter
+  namespace: barmate
+spec:
+  type: NodePort
+  selector:
+    app: waiter
+  ports:
+    - name: waiter
+      protocol: TCP
+      port: 8092
+      targetPort: 8092
+      nodePort: 30096
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders-service
+  namespace: barmate
+spec:
+  type: NodePort
+  selector:
+    app: orders-service
+  ports:
+    - name: orders-service
+      protocol: TCP
+      port: 8093
+      targetPort: 8093
+      nodePort: 30097
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: barmate
+spec:
+  type: NodePort
+  selector:
+    app: gateway
+  ports:
+    - name: gateway
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+      nodePort: 30080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: barmate
+spec:
+  selector:
+    app: frontend
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 80
